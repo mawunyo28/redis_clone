@@ -71,19 +71,23 @@ int main() {
     die("connect");
   }
 
-  char msg[] = "hello";
-  write(fd, msg, strlen(msg));
+  // multiple requests
+  int32_t err = query(fd, "hello1");
 
-  char rbuf[64] = {};
-  ssize_t n =
-      read(fd, rbuf, sizeof(rbuf) - 1); // Space for terminating character
-
-  if (n < 0) {
-    die("read");
+  if (err) {
+    goto L_DONE;
   }
+  err = query(fd, "hello2");
 
-  std::cout << "Server says: " << rbuf << std::endl;
+  if (err)
+    goto L_DONE;
+
+  err = query(fd, "hello3");
+
+  if (err)
+    goto L_DONE;
+
+L_DONE:
   close(fd);
-
   return 0;
 }
