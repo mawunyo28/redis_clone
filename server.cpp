@@ -1,25 +1,50 @@
 #include "util.hh"
 #include <asm-generic/socket.h>
+#include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+static int32_t one_request(int connfd) {
+  // 4 bytes header
+  //
+  char rbuf[4 + k_max_msg + 1];
+  errno = 0;
 
-static void do_something(int connfd) {
-  char rbuf[64] = {};
+  int32_t err = read_full(connfd, rbuf, 4);
 
-  ssize_t n = read(connfd, rbuf, sizeof(rbuf) - 1);
+  if (err) {
+    if (errno == 0) {
+      msg("EOF");
+    } else {
+      msg("read() error");
+    }
 
-  if (n < 0) {
-    msg("read() error");
-    return;
+    return err;
   }
 
-  std::cout << "client says " << rbuf << std::endl;
+  uint32_t len = 0;
+  memcpy(&len, rbuf, 4); // assume little endian
+  if (len > k_max_msg) {
+    msg("too long");
+    return -1;
+  }
 
-  char wbuf[] = "world";
-  write(connfd, wbuf, strlen(wbuf));
+  // do something
+  //
+  rbuf[4 + len] = '\0';
+  std::cout << "Client says: " << &rbuf[4] << std::endl;
+
+  // reply using the same protocol
+  const char reply[] = "world";
+  char wbuf[4 + sizeof(reply)];
+  len = (uint32_t)strlen(reply);
+  memcpy(wbuf, &len, 4);
+  memcpy(&wbuf[4], reply, len);
+
+  return write_all(connfd, wbuf, 4 + len);
 }
 
 int main() {
@@ -59,7 +84,14 @@ int main() {
       continue; // error Todo: Solve
     }
 
-    do_something(connfd);
+    // only serves one client connection at once
+    while (true) {
+      int32_t err = one_request(connfd);
+
+      if (err) {
+        break;
+      }
+    }
 
     close(connfd);
   }
